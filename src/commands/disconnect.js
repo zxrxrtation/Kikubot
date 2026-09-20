@@ -11,11 +11,28 @@ export default {
         .setDescription('Automatically disconnect a member from voice channels')
         .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers)
 
-        .addUserOption(option =>
-            option
-                .setName('user')
-                .setDescription('Member to automatically disconnect')
-                .setRequired(true)
+        .addSubcommand(sub =>
+            sub
+                .setName('start')
+                .setDescription('Enable automatic disconnect for a member')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription('Member to automatically disconnect')
+                        .setRequired(true)
+                )
+        )
+
+        .addSubcommand(sub =>
+            sub
+                .setName('stop')
+                .setDescription('Stop automatic disconnect for a member')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription('Member')
+                        .setRequired(true)
+                )
         ),
 
     async execute(interaction) {
@@ -30,14 +47,21 @@ export default {
 
         const user = interaction.options.getUser('user');
         const key = `${guild.id}:${user.id}`;
+        const subcommand = interaction.options.getSubcommand();
 
-        // Stop if already active
-        if (activeTargets.has(key)) {
+        if (subcommand === 'stop') {
+            if (!activeTargets.has(key)) {
+                return interaction.reply({
+                    content: `ℹ️ ${user} is not currently protected.`,
+                    ephemeral: true
+                });
+            }
+
             activeTargets.delete(key);
 
-            return interaction.reply({
-                content: `🛑 Automatic disconnect stopped for ${user}.`
-            });
+            return interaction.reply(
+                `🛑 Automatic disconnect stopped for ${user}.`
+            );
         }
 
         activeTargets.set(key, {
@@ -46,7 +70,6 @@ export default {
             startedBy: interaction.user.id
         });
 
-        // Disconnect immediately if already in VC
         const member = await guild.members
             .fetch(user.id)
             .catch(() => null);
@@ -61,12 +84,11 @@ export default {
             }
         }
 
-        return interaction.reply({
-            content:
-                `🔒 **Automatic disconnect enabled for ${user}.**\n\n` +
-                `Whenever they join a voice channel, they will be automatically disconnected.\n` +
-                `Run \`/disconnect user:${user.username}\` again to stop it.`
-        });
+        return interaction.reply(
+            `🔒 **Automatic disconnect enabled for ${user}.**\n\n` +
+            `They will be disconnected whenever they join a voice channel.\n\n` +
+            `Use \`/disconnect stop\` to disable it.`
+        );
     },
 
     activeTargets
