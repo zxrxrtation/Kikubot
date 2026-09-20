@@ -735,7 +735,7 @@ export default {
             } catch (error) {
 
                 logger.error(
-                    channel ${channel.id}:`,
+                    `Failed to transfer ownership of channel ${channel.id}:`,
                     error
                 );
             }
