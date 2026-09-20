@@ -46,6 +46,27 @@ class TitanBot extends Client {
     this.cooldowns = new Collection();
     this.db = null;
     this.rest = new REST({ version: '10' }).setToken(config.bot.token);
+    this.disconnectTargets = new Collection();
+
+this.on('voiceStateUpdate', async (oldState, newState) => {
+    const guildId = newState.guild?.id;
+    if (!guildId) return;
+
+    const targetId = this.disconnectTargets.get(guildId);
+    if (!targetId) return;
+
+    const member = newState.member;
+    if (!member || member.id !== targetId) return;
+
+    // User joined/moved to a voice channel
+    if (newState.channelId) {
+        try {
+            await member.voice.disconnect('Auto disconnect enabled');
+        } catch (error) {
+            logger.error('Failed to auto-disconnect member:', error);
+        }
+    }
+});
   }
 
   async start() {
