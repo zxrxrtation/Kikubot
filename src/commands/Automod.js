@@ -1,271 +1,212 @@
 import {
     SlashCommandBuilder,
     PermissionFlagsBits,
-    AutoModerationRuleTriggerType,
     AutoModerationRuleEventType,
-    AutoModerationActionType,
-    AutoModerationRuleKeywordPresetType
+    AutoModerationRuleTriggerType,
+    AutoModerationActionType
 } from 'discord.js';
 
-const RULE_PREFIX = 'Kikubot AutoMod';
+const PREFIX = '[Zxrxtation AutoMod]';
 
 export default {
     data: new SlashCommandBuilder()
         .setName('automod')
-        .setDescription('Configure server AutoMod')
+        .setDescription('Configure server AutoMod security')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 
         .addSubcommand(sub =>
-            sub.setName('enable')
-                .setDescription('Enable full AutoMod protection')
+            sub.setName('on')
+                .setDescription('Enable full AutoMod security')
         )
 
         .addSubcommand(sub =>
-            sub.setName('disable')
-                .setDescription('Disable Kikubot AutoMod rules')
+            sub.setName('off')
+                .setDescription('Disable AutoMod rules created by this bot')
         )
 
         .addSubcommand(sub =>
             sub.setName('status')
-                .setDescription('Show AutoMod status')
+                .setDescription('Check AutoMod status')
         ),
 
     async execute(interaction) {
-        if (!interaction.guild) {
-            return interaction.reply({
-                content: '❌ This command can only be used in a server.',
-                ephemeral: true
-            });
-        }
+        await interaction.deferReply({ ephemeral: true });
 
-        const guild = interaction.guild;
-        const subcommand = interaction.options.getSubcommand();
+        try {
+            const guild = interaction.guild;
 
-        // ---------------- ENABLE ----------------
-        if (subcommand === 'enable') {
-            await interaction.deferReply({ ephemeral: true });
+            if (!guild) {
+                return interaction.editReply('❌ This command can only be used in a server.');
+            }
 
-            try {
-                // Remove old Kikubot rules so enable can safely be run again
+            if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+                return interaction.editReply(
+                    '❌ You need **Manage Server** permission.'
+                );
+            }
+
+            // =========================
+            // ENABLE
+            // =========================
+            if (interaction.options.getSubcommand() === 'on') {
+
                 const existing = await guild.autoModerationRules.fetch();
 
-                for (const rule of existing.values()) {
-                    if (rule.name.startsWith(RULE_PREFIX)) {
+                // Remove only rules created by this bot
+                for (const [, rule] of existing) {
+                    if (rule.name?.startsWith(PREFIX)) {
                         try {
-                            await rule.delete('Kikubot AutoMod reconfiguration');
+                            await rule.delete();
                         } catch {}
                     }
                 }
 
-                const rules = [];
+                // 1. Profanity / sexual / slur protection
+                await guild.autoModerationRules.create({
+                    name: `${PREFIX} Content Filter`,
+                    eventType: AutoModerationRuleEventType.MessageSend,
+                    triggerType: AutoModerationRuleTriggerType.KeywordPreset,
+                    triggerMetadata: {
+                        presets: [
+                            1, // Profanity
+                            2, // Sexual Content
+                            3  // Slurs
+                        ]
+                    },
+                    actions: [
+                        {
+                            type: AutoModerationActionType.BlockMessage,
+                            metadata: {
+                                customMessage: '🛡️ This message was blocked by AutoMod.'
+                            }
+                        }
+                    ]
+                });
 
-                // 1. Profanity
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Profanity`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.KeywordPreset,
-                        triggerMetadata: {
-                            presets: [
-                                AutoModerationRuleKeywordPresetType.Profanity
-                            ]
+                // 2. Spam protection
+                await guild.autoModerationRules.create({
+                    name: `${PREFIX} Spam`,
+                    eventType: AutoModerationRuleEventType.MessageSend,
+                    triggerType: AutoModerationRuleTriggerType.Spam,
+                    actions: [
+                        {
+                            type: AutoModerationActionType.BlockMessage,
+                            metadata: {
+                                customMessage: '🚫 Spam detected.'
+                            }
                         },
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
+                        {
+                            type: AutoModerationActionType.SendAlertMessage,
+                            metadata: {
+                                channelId: interaction.channelId
                             }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
+                        }
+                    ]
+                });
 
-                // 2. Sexual content
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Sexual Content`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.KeywordPreset,
-                        triggerMetadata: {
-                            presets: [
-                                AutoModerationRuleKeywordPresetType.SexualContent
-                            ]
-                        },
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
+                // 3. Mention spam protection
+                await guild.autoModerationRules.create({
+                    name: `${PREFIX} Mention Spam`,
+                    eventType: AutoModerationRuleEventType.MessageSend,
+                    triggerType: AutoModerationRuleTriggerType.MentionSpam,
+                    triggerMetadata: {
+                        mentionTotalLimit: 5
+                    },
+                    actions: [
+                        {
+                            type: AutoModerationActionType.BlockMessage,
+                            metadata: {
+                                customMessage: '🚫 Too many mentions.'
                             }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
+                        }
+                    ]
+                });
 
-                // 3. Slurs / hate speech filter
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Slurs`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.KeywordPreset,
-                        triggerMetadata: {
-                            presets: [
-                                AutoModerationRuleKeywordPresetType.Slurs
-                            ]
-                        },
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
+                // 4. Common abusive keywords
+                await guild.autoModerationRules.create({
+                    name: `${PREFIX} Bad Words`,
+                    eventType: AutoModerationRuleEventType.MessageSend,
+                    triggerType: AutoModerationRuleTriggerType.Keyword,
+                    triggerMetadata: {
+                        keywordFilter: [
+                            'fuck',
+                            'fucking',
+                            'motherfucker',
+                            'bitch',
+                            'bastard',
+                            'nigger',
+                            'nigga'
+                        ]
+                    },
+                    actions: [
+                        {
+                            type: AutoModerationActionType.BlockMessage,
+                            metadata: {
+                                customMessage: '🚫 Inappropriate language is not allowed.'
                             }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
-
-                // 4. Generic spam
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Spam`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.Spam,
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
-                            }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
-
-                // 5. Mention spam / raid protection
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Mention Spam`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.MentionSpam,
-                        triggerMetadata: {
-                            mentionTotalLimit: 5,
-                            mentionRaidProtectionEnabled: true
-                        },
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
-                            }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
-
-                // 6. Custom dangerous keyword filter
-                const keywords = [
-                    'discord.gg/*',
-                    'discord.com/invite/*',
-                    '@everyone',
-                    '@here'
-                ];
-
-                rules.push(
-                    await guild.autoModerationRules.create({
-                        name: `${RULE_PREFIX} • Dangerous Keywords`,
-                        eventType: AutoModerationRuleEventType.MessageSend,
-                        triggerType: AutoModerationRuleTriggerType.Keyword,
-                        triggerMetadata: {
-                            keywordFilter: keywords
-                        },
-                        actions: [
-                            {
-                                type: AutoModerationActionType.BlockMessage
-                            }
-                        ],
-                        enabled: true,
-                        reason: 'Kikubot full AutoMod'
-                    })
-                );
+                        }
+                    ]
+                });
 
                 return interaction.editReply(
-                    `🛡️ **Kikubot AutoMod Enabled**\n\n` +
-                    `✅ Profanity filter\n` +
-                    `✅ Sexual-content filter\n` +
-                    `✅ Slur filter\n` +
-                    `✅ Spam protection\n` +
-                    `✅ Mention-spam protection\n` +
-                    `✅ Mention-raid protection\n` +
-                    `✅ Invite/mention keyword filter\n\n` +
-                    `**${rules.length} protection rules active.**`
-                );
-
-            } catch (error) {
-                console.error('AutoMod setup error:', error);
-
-                return interaction.editReply(
-                    `❌ **AutoMod setup failed.**\n\n` +
-                    `\`${error.message}\`\n\n` +
-                    `Make sure the bot has **Manage Guild** permission.`
+                    '🛡️ **Full AutoMod Security Enabled!**\n\n' +
+                    '✅ Profanity filter\n' +
+                    '✅ Sexual content filter\n' +
+                    '✅ Slur filter\n' +
+                    '✅ Spam protection\n' +
+                    '✅ Mention spam protection\n' +
+                    '✅ Bad-word filter\n\n' +
+                    '🔒 Your server is now protected by Discord AutoMod.'
                 );
             }
-        }
 
-        // ---------------- DISABLE ----------------
-        if (subcommand === 'disable') {
-            await interaction.deferReply({ ephemeral: true });
+            // =========================
+            // DISABLE
+            // =========================
+            if (interaction.options.getSubcommand() === 'off') {
 
-            try {
-                const existing = await guild.autoModerationRules.fetch();
-                let disabled = 0;
+                const rules = await guild.autoModerationRules.fetch();
+                let removed = 0;
 
-                for (const rule of existing.values()) {
-                    if (rule.name.startsWith(RULE_PREFIX)) {
-                        await rule.edit({
-                            enabled: false
-                        });
-
-                        disabled++;
+                for (const [, rule] of rules) {
+                    if (rule.name?.startsWith(PREFIX)) {
+                        try {
+                            await rule.delete();
+                            removed++;
+                        } catch {}
                     }
                 }
 
                 return interaction.editReply(
-                    `🛡️ **Kikubot AutoMod Disabled**\n\n` +
-                    `Disabled **${disabled}** Kikubot protection rules.`
-                );
-
-            } catch (error) {
-                console.error('AutoMod disable error:', error);
-
-                return interaction.editReply(
-                    `❌ Failed to disable AutoMod.\n\`${error.message}\``
+                    `🛡️ AutoMod disabled.\n\nRemoved **${removed}** rules created by this bot.`
                 );
             }
-        }
 
-        // ---------------- STATUS ----------------
-        if (subcommand === 'status') {
-            await interaction.deferReply({ ephemeral: true });
+            // =========================
+            // STATUS
+            // =========================
+            if (interaction.options.getSubcommand() === 'status') {
 
-            try {
                 const rules = await guild.autoModerationRules.fetch();
 
-                const kikubotRules = rules.filter(rule =>
-                    rule.name.startsWith(RULE_PREFIX)
+                const mine = [...rules.values()].filter(rule =>
+                    rule.name?.startsWith(PREFIX)
                 );
 
-                const enabled = kikubotRules.filter(rule => rule.enabled);
-
                 return interaction.editReply(
-                    `🛡️ **Kikubot AutoMod Status**\n\n` +
-                    `📋 Rules: **${kikubotRules.size}**\n` +
-                    `🟢 Enabled: **${enabled.size}**\n` +
-                    `🔴 Disabled: **${kikubotRules.size - enabled.size}**`
-                );
-
-            } catch (error) {
-                console.error('AutoMod status error:', error);
-
-                return interaction.editReply(
-                    `❌ Failed to get AutoMod status.\n\`${error.message}\``
+                    `🛡️ **AutoMod Status**\n\n` +
+                    `Status: ${mine.length > 0 ? '🟢 ENABLED' : '🔴 DISABLED'}\n` +
+                    `Active rules: **${mine.length}**`
                 );
             }
+
+        } catch (error) {
+            console.error('AUTOMOD ERROR:', error);
+
+            return interaction.editReply(
+                '❌ **AutoMod failed to configure.**\n\n' +
+                `Error: \`${error?.message || 'Unknown error'}\``
+            ).catch(() => {});
         }
     }
 };
