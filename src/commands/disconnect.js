@@ -3,19 +3,22 @@ import {
     PermissionFlagsBits
 } from 'discord.js';
 
-const activeTargets = new Map();
-
 export default {
     data: new SlashCommandBuilder()
         .setName('disconnect')
-        .setDescription('Automatically disconnect a member whenever they join VC')
+        .setDescription('Manage automatic voice disconnect')
         .setDefaultMemberPermissions(PermissionFlagsBits.MoveMembers)
 
-        .addUserOption(option =>
-            option
-                .setName('user')
-                .setDescription('Member to automatically disconnect')
-                .setRequired(true)
+        .addSubcommand(sub =>
+            sub
+                .setName('start')
+                .setDescription('Automatically disconnect a member when they join VC')
+                .addUserOption(option =>
+                    option
+                        .setName('user')
+                        .setDescription('Member to automatically disconnect')
+                        .setRequired(true)
+                )
         )
 
         .addSubcommand(sub =>
@@ -40,59 +43,66 @@ export default {
             });
         }
 
-        const subcommand = interaction.options.getSubcommand(false);
+        const subcommand = interaction.options.getSubcommand();
+        const user = interaction.options.getUser('user');
+
+        if (!user) {
+            return interaction.reply({
+                content: '❌ Please select a user.',
+                ephemeral: true
+            });
+        }
+
+        // START
+        if (subcommand === 'start') {
+            interaction.client.disconnectTargets.set(
+                guild.id,
+                user.id
+            );
+
+            const member = await guild.members
+                .fetch(user.id)
+                .catch(() => null);
+
+            // Disconnect immediately if already in VC
+            if (member?.voice?.channel) {
+                try {
+                    await member.voice.disconnect(
+                        `Automatic disconnect enabled by ${interaction.user.tag}`
+                    );
+                } catch (error) {
+                    console.error('[Disconnect] Failed:', error);
+                }
+            }
+
+            return interaction.reply({
+                content:
+                    `🔒 **Automatic disconnect enabled!**\n\n` +
+                    `👤 Target: ${user}\n` +
+                    `🔄 Whenever they join a voice channel, they will be automatically disconnected.\n\n` +
+                    `🛑 Use \`/disconnect stop user:${user.username}\` to stop it.`,
+                ephemeral: true
+            });
+        }
 
         // STOP
         if (subcommand === 'stop') {
-            const user = interaction.options.getUser('user');
+            const currentTarget =
+                interaction.client.disconnectTargets.get(guild.id);
 
-            const key = `${guild.id}:${user.id}`;
-
-            if (!activeTargets.has(key)) {
+            if (currentTarget !== user.id) {
                 return interaction.reply({
-                    content: `ℹ️ ${user} is not currently protected.`,
+                    content: `ℹ️ ${user} is not currently targeted.`,
                     ephemeral: true
                 });
             }
 
-            activeTargets.delete(key);
+            interaction.client.disconnectTargets.delete(guild.id);
 
-            return interaction.reply(
-                `🛑 Automatic disconnect stopped for ${user}.`
-            );
+            return interaction.reply({
+                content: `🛑 **Automatic disconnect stopped for ${user}.**`,
+                ephemeral: true
+            });
         }
-
-        // START
-        const user = interaction.options.getUser('user');
-        const key = `${guild.id}:${user.id}`;
-
-        activeTargets.set(key, {
-            guildId: guild.id,
-            userId: user.id,
-            startedBy: interaction.user.id
-        });
-
-        // If target is already in VC, disconnect immediately
-        const member = await guild.members
-            .fetch(user.id)
-            .catch(() => null);
-
-        if (member?.voice?.channel) {
-            try {
-                await member.voice.disconnect(
-                    `Automatic disconnect enabled by ${interaction.user.tag}`
-                );
-            } catch (error) {
-                console.error('[Disconnect] Failed:', error);
-            }
-        }
-
-        return interaction.reply(
-            `🔒 **Automatic disconnect enabled for ${user}.**\n\n` +
-            `Whenever they join a voice channel, they will be automatically disconnected.\n\n` +
-            `Use \`/disconnect stop\` to stop it.`
-        );
-    },
-
-    activeTargets
+    }
 };
