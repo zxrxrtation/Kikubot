@@ -513,11 +513,7 @@ export default {
                         `${triggerChannel.name} ${existingChannels + 1}`;
                 }
 
-                const channelName =
-                    sanitizeVoiceChannelName(
-                                        const channelName = sanitizeVoiceChannelName(
-                    finalName
-                );
+                const channelName = sanitizeVoiceChannelName(finalName);
 
                 if (
                     !member.voice?.channel ||
