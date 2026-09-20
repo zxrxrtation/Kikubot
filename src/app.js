@@ -6,14 +6,13 @@ import {
     unregisterTemporaryChannel,
     getTemporaryChannelInfo,
     formatChannelName
-} from '../utils/database.js';
+} from './utils/database.js';
 
-import { sanitizeInput } from '../utils/validation.js';
-import { logger } from '../utils/logger.js';
-import { handleMusicVoiceState } from '../services/music/musicVoiceState.js';
+import { sanitizeInput } from './utils/validation.js';
+import { logger } from './utils/logger.js';
+import { handleMusicVoiceState } from './services/music/musicVoiceState.js';
 
-// 👇 Auto-disconnect command
-import disconnectCommand from '../commands/disconnect.js';
+import disconnectCommand from './commands/disconnect.js';
 
 const channelCreationCooldown = new Map();
 
@@ -33,7 +32,7 @@ export default {
 
     async execute(oldState, newState, client) {
 
-        if (newState.member.user.bot) return;
+        if (newState.member?.user?.bot) return;
 
         /*
         ============================================================
@@ -41,16 +40,16 @@ export default {
         ============================================================
         */
 
-        const disconnectTargets = disconnectCommand.activeTargets;
+        const disconnectTargets =
+            disconnectCommand.activeTargets;
 
         const disconnectKey =
             `${newState.guild.id}:${newState.member.id}`;
 
-        // User joined a voice channel
         if (
             !oldState.channel &&
             newState.channel &&
-            disconnectTargets.has(disconnectKey)
+            disconnectTargets?.has(disconnectKey)
         ) {
             try {
                 await newState.member.voice.disconnect(
@@ -62,14 +61,12 @@ export default {
                 );
 
             } catch (error) {
-
                 logger.error(
                     `Failed to automatically disconnect ${newState.member.user.tag}:`,
                     error
                 );
             }
 
-            // Don't continue Join-to-Create processing
             return;
         }
 
@@ -82,17 +79,23 @@ export default {
         const guildId = newState.guild.id;
         const userId = newState.member.id;
 
-        const cooldownKey = `${guildId}-${userId}`;
+        const cooldownKey =
+            `${guildId}-${userId}`;
 
         cleanupCooldownEntries();
 
         try {
 
             const config =
-                await getJoinToCreateConfig(client, guildId);
+                await getJoinToCreateConfig(
+                    client,
+                    guildId
+                );
 
             if (
+                !config ||
                 !config.enabled ||
+                !config.triggerChannels ||
                 config.triggerChannels.length === 0
             ) {
                 return;
@@ -104,8 +107,10 @@ export default {
             -------------------------
             */
 
-            if (!oldState.channel && newState.channel) {
-
+            if (
+                !oldState.channel &&
+                newState.channel
+            ) {
                 await handleVoiceJoin(
                     client,
                     newState,
@@ -119,8 +124,10 @@ export default {
             -------------------------
             */
 
-            if (oldState.channel && !newState.channel) {
-
+            if (
+                oldState.channel &&
+                !newState.channel
+            ) {
                 await handleVoiceLeave(
                     client,
                     oldState,
@@ -137,9 +144,9 @@ export default {
             if (
                 oldState.channel &&
                 newState.channel &&
-                oldState.channel.id !== newState.channel.id
+                oldState.channel.id !==
+                    newState.channel.id
             ) {
-
                 await handleVoiceMove(
                     client,
                     oldState,
@@ -162,20 +169,37 @@ export default {
         ============================================================
         */
 
-        async function handleVoiceJoin(client, state, config) {
+        async function handleVoiceJoin(
+            client,
+            state,
+            config
+        ) {
 
-            const { channel, member } = state;
+            const {
+                channel,
+                member
+            } = state;
 
-            if (!config.triggerChannels.includes(channel.id)) {
+            if (
+                !config.triggerChannels.includes(
+                    channel.id
+                )
+            ) {
                 return;
             }
 
             const now = Date.now();
 
-            if (channelCreationCooldown.has(cooldownKey)) {
+            if (
+                channelCreationCooldown.has(
+                    cooldownKey
+                )
+            ) {
 
                 const lastCreation =
-                    channelCreationCooldown.get(cooldownKey);
+                    channelCreationCooldown.get(
+                        cooldownKey
+                    );
 
                 if (
                     now - lastCreation <
@@ -196,11 +220,14 @@ export default {
                 ).find(tempChannelId => {
 
                     const tempInfo =
-                        config.temporaryChannels[tempChannelId];
+                        config.temporaryChannels[
+                            tempChannelId
+                        ];
 
                     return (
                         tempInfo &&
-                        tempInfo.ownerId === member.id
+                        tempInfo.ownerId ===
+                            member.id
                     );
                 });
 
@@ -232,7 +259,8 @@ export default {
             }
 
             if (
-                member.voice.channel?.id !== channel.id
+                member.voice?.channel?.id !==
+                channel.id
             ) {
                 return;
             }
@@ -263,7 +291,10 @@ export default {
             config
         ) {
 
-            const { channel, member } = state;
+            const {
+                channel,
+                member
+            } = state;
 
             const tempChannelInfo =
                 await getTemporaryChannelInfo(
@@ -285,7 +316,8 @@ export default {
                 );
 
             } else if (
-                tempChannelInfo.ownerId === member.id
+                tempChannelInfo.ownerId ===
+                member.id
             ) {
 
                 const nextMember =
@@ -328,7 +360,8 @@ export default {
                 if (tempChannelInfo) {
 
                     if (
-                        oldState.channel.members.size === 0
+                        oldState.channel.members
+                            .size === 0
                     ) {
 
                         await deleteTemporaryChannel(
@@ -359,6 +392,7 @@ export default {
             }
 
             if (
+                newState.channel &&
                 config.triggerChannels.includes(
                     newState.channel.id
                 ) &&
@@ -414,11 +448,15 @@ export default {
                     triggerChannel.permissionsFor(me);
 
                 if (
-                    !triggerPermissions?.has([
-                        PermissionFlagsBits.ManageChannels,
-                        PermissionFlagsBits.MoveMembers,
+                    !triggerPermissions?.has(
+                        PermissionFlagsBits.ManageChannels
+                    ) ||
+                    !triggerPermissions?.has(
+                        PermissionFlagsBits.MoveMembers
+                    ) ||
+                    !triggerPermissions?.has(
                         PermissionFlagsBits.Connect
-                    ])
+                    )
                 ) {
 
                     logger.warn(
@@ -458,7 +496,7 @@ export default {
                     0,
                     Math.min(
                         99,
-                        userLimit || 0
+                        Number(userLimit) || 0
                     )
                 );
 
@@ -467,12 +505,13 @@ export default {
                 );
 
                 const existingChannels =
-                    guild.channels.cache.filter(c =>
-                        c.parentId ===
-                        triggerChannel.parentId &&
-                        c.name.startsWith(
-                            triggerChannel.name
-                        )
+                    guild.channels.cache.filter(
+                        c =>
+                            c.parentId ===
+                                triggerChannel.parentId &&
+                            c.name.startsWith(
+                                triggerChannel.name
+                            )
                     ).size;
 
                 let finalName;
@@ -513,41 +552,67 @@ export default {
                         `${triggerChannel.name} ${existingChannels + 1}`;
                 }
 
-                const channelName = sanitizeVoiceChannelName(finalName);
+                const channelName =
+                    sanitizeVoiceChannelName(
+                        finalName
+                    );
 
                 if (
                     !member.voice?.channel ||
-                    member.voice.channel.id !== triggerChannel.id
+                    member.voice.channel.id !==
+                        triggerChannel.id
                 ) {
+
                     logger.debug(
                         `Member ${member.id} no longer in trigger channel ${triggerChannel.id}, aborting temporary channel creation`
                     );
-                    channelCreationCooldown.delete(cooldownKey);
+
+                    channelCreationCooldown.delete(
+                        cooldownKey
+                    );
+
                     return;
                 }
 
-                const tempChannel = await guild.channels.create({
-                    name: channelName,
-                    type: ChannelType.GuildVoice,
-                    parent: triggerChannel.parentId,
-                    userLimit: userLimit === 0 ? undefined : userLimit,
-                    bitrate: bitrate,
-                    permissionOverwrites: [
-                        {
-                            id: member.id,
-                            allow: [
-                                'Connect',
-                                'Speak',
-                                'PrioritySpeaker',
-                                'MoveMembers'
-                            ]
-                        },
-                        {
-                            id: guild.id,
-                            allow: ['Connect', 'Speak']
-                        }
-                    ]
-                });
+                const tempChannel =
+                    await guild.channels.create({
+                        name: channelName,
+
+                        type:
+                            ChannelType.GuildVoice,
+
+                        parent:
+                            triggerChannel.parentId,
+
+                        userLimit:
+                            userLimit === 0
+                                ? undefined
+                                : userLimit,
+
+                        bitrate: bitrate,
+
+                        permissionOverwrites: [
+                            {
+                                id: member.id,
+
+                                allow: [
+                                    'Connect',
+                                    'Speak',
+                                    'PrioritySpeaker',
+                                    'MoveMembers'
+                                ]
+                            },
+
+                            {
+                                id: guild.id,
+
+                                allow: [
+                                    'Connect',
+                                    'Speak'
+                                ]
+                            }
+                        ]
+                    });
 
                 await registerTemporaryChannel(
                     client,
@@ -557,25 +622,47 @@ export default {
                     triggerChannel.id
                 );
 
-                if (member.voice?.channel?.id === triggerChannel.id) {
-                    await member.voice.setChannel(tempChannel);
+                if (
+                    member.voice?.channel?.id ===
+                    triggerChannel.id
+                ) {
+
+                    await member.voice.setChannel(
+                        tempChannel
+                    );
                 }
 
                 logger.info(
                     `Created temporary voice channel ${tempChannel.name} (${tempChannel.id})`
                 );
+
             } catch (error) {
+
                 logger.error(
-                    `Failed to create temporary channel for user ${member.user.tag}:`,
+                    `Failed to create temporary channel for ${member.user.tag}:`,
                     error
                 );
 
-                channelCreationCooldown.delete(cooldownKey);
+                channelCreationCooldown.delete(
+                    cooldownKey
+                );
             }
         }
 
-        async function deleteTemporaryChannel(client, channel, guildId) {
+        /*
+        ============================================================
+        DELETE TEMPORARY CHANNEL
+        ============================================================
+        */
+
+        async function deleteTemporaryChannel(
+            client,
+            channel,
+            guildId
+        ) {
+
             try {
+
                 await unregisterTemporaryChannel(
                     client,
                     guildId,
@@ -585,7 +672,9 @@ export default {
                 await channel.delete(
                     'Temporary voice channel - empty'
                 );
+
             } catch (error) {
+
                 logger.error(
                     `Failed to delete temporary channel ${channel.id}:`,
                     error
@@ -593,118 +682,57 @@ export default {
             }
         }
 
+        /*
+        ============================================================
+        TRANSFER OWNERSHIP
+        ============================================================
+        */
+
         async function transferChannelOwnership(
             client,
             channel,
             guildId,
             newOwnerId
         ) {
+
             try {
+
                 const config =
-                    await getJoinToCreateConfig(client, guildId);
+                    await getJoinToCreateConfig(
+                        client,
+                        guildId
+                    );
 
                 const tempChannelInfo =
-                    config.temporaryChannels?.[channel.id];
+                    config.temporaryChannels?.[
+                        channel.id
+                    ];
 
-                if (!tempChannelInfo) return;
+                if (!tempChannelInfo) {
+                    return;
+                }
 
-                config.temporaryChannels[channel.id].ownerId =
-                    newOwnerId;
+                config.temporaryChannels[
+                    channel.id
+                ].ownerId = newOwnerId;
 
                 await client.db.set(
                     `guild:${guildId}:jointocreate`,
                     config
                 );
 
+                const newOwner =
+                    channel.guild.members.cache.get(
+                        newOwnerId
+                    );
+
                 await channel.setName(
                     sanitizeVoiceChannelName(
-                        `${channel.guild.members.cache.get(newOwnerId)?.displayName || 'Voice'}'s Room`
+                        `${newOwner?.displayName || 'Voice'}'s Room`
                     )
                 );
+
             } catch (error) {
+
                 logger.error(
-                    `Failed to transfer ownership of channel ${channel.id}:`,
-                    error
-                );
-            }
-        }
-
-        if (client.config?.features?.music) {
-            handleMusicVoiceState(
-                client,
-                oldState,
-                newState
-            ).catch(error => {
-                logger.error(
-                    'Music voice state handler error:',
-                    error
-                );
-            });
-        }
-    }
-};
-
-function sanitizeVoiceChannelName(inputName) {
-    const safeName = sanitizeInput(
-        String(inputName || ''),
-        MAX_CHANNEL_NAME_LENGTH
-    )
-        .replace(/[\r\n\t]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    return safeName || FALLBACK_CHANNEL_NAME;
-}
-
-function clampVoiceBitrate(value) {
-    const parsed = Number(value);
-
-    if (!Number.isFinite(parsed)) {
-        return DEFAULT_VOICE_BITRATE;
-    }
-
-    return Math.max(
-        MIN_VOICE_BITRATE,
-        Math.min(
-            MAX_VOICE_BITRATE,
-            Math.floor(parsed)
-        )
-    );
-}
-
-function cleanupCooldownEntries() {
-    const now = Date.now();
-
-    for (const [key, timestamp] of channelCreationCooldown.entries()) {
-        if (
-            now - timestamp >=
-            VOICE_CREATE_COOLDOWN_MS
-        ) {
-            channelCreationCooldown.delete(key);
-        }
-    }
-}
-
-function trimCooldownMapIfNeeded() {
-    if (
-        channelCreationCooldown.size <=
-        MAX_TRACKED_COOLDOWNS
-    ) {
-        return;
-    }
-
-    const entries = [
-        ...channelCreationCooldown.entries()
-    ].sort((a, b) => a[1] - b[1]);
-
-    const removeCount =
-        channelCreationCooldown.size -
-        MAX_TRACKED_COOLDOWNS;
-
-    for (let index = 0; index < removeCount; index += 1) {
-        channelCreationCooldown.delete(
-            entries[index][0]
-        );
-    }
-}
-                       
+                    `Failed to transfer ownership of chan
