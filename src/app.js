@@ -735,4 +735,126 @@ export default {
             } catch (error) {
 
                 logger.error(
-                    `Failed to transfer ownership of chan
+                    channel ${channel.id}:`,
+                    error
+                );
+            }
+        }
+
+        /*
+        ============================================================
+        MUSIC VOICE STATE
+        ============================================================
+        */
+
+        if (client.config?.features?.music) {
+            handleMusicVoiceState(
+                client,
+                oldState,
+                newState
+            ).catch(error => {
+                logger.error(
+                    'Music voice state handler error:',
+                    error
+                );
+            });
+        }
+    }
+};
+
+/*
+============================================================
+VOICE CHANNEL NAME SANITIZER
+============================================================
+*/
+
+function sanitizeVoiceChannelName(inputName) {
+    const safeName = sanitizeInput(
+        String(inputName || ''),
+        MAX_CHANNEL_NAME_LENGTH
+    )
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return safeName || FALLBACK_CHANNEL_NAME;
+}
+
+/*
+============================================================
+VOICE BITRATE LIMITER
+============================================================
+*/
+
+function clampVoiceBitrate(value) {
+    const parsed = Number(value);
+
+    if (!Number.isFinite(parsed)) {
+        return DEFAULT_VOICE_BITRATE;
+    }
+
+    return Math.max(
+        MIN_VOICE_BITRATE,
+        Math.min(
+            MAX_VOICE_BITRATE,
+            Math.floor(parsed)
+        )
+    );
+}
+
+/*
+============================================================
+CLEANUP COOLDOWN ENTRIES
+============================================================
+*/
+
+function cleanupCooldownEntries() {
+    const now = Date.now();
+
+    for (
+        const [key, timestamp]
+        of channelCreationCooldown.entries()
+    ) {
+        if (
+            now - timestamp >=
+            VOICE_CREATE_COOLDOWN_MS
+        ) {
+            channelCreationCooldown.delete(key);
+        }
+    }
+}
+
+/*
+============================================================
+LIMIT COOLDOWN MAP SIZE
+============================================================
+*/
+
+function trimCooldownMapIfNeeded() {
+    if (
+        channelCreationCooldown.size <=
+        MAX_TRACKED_COOLDOWNS
+    ) {
+        return;
+    }
+
+    const entries = [
+        ...channelCreationCooldown.entries()
+    ].sort(
+        (a, b) => a[1] - b[1]
+    );
+
+    const removeCount =
+        channelCreationCooldown.size -
+        MAX_TRACKED_COOLDOWNS;
+
+    for (
+        let index = 0;
+        index < removeCount;
+        index += 1
+    ) {
+        channelCreationCooldown.delete(
+            entries[index][0]
+        );
+    }
+}
